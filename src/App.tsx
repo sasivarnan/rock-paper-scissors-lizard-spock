@@ -1,77 +1,365 @@
-import { useEffect } from 'react'
+import { Button } from './components/Button'
+import { AppearanceControl } from './components/AppearanceControl'
+import { initializeAppearance } from './game/appearance'
+import { useGameAudio } from './hooks/useGameAudio'
+import { unlockAudio } from './game/audio'
+import { useEffect, useRef } from 'react'
 import { useSelector } from '@xstate/store-react'
 import { gameStore } from './game/store'
-import { computer, gestures, moves, wins } from './game/rules'
+import { isMatchFinished, matchOutcome } from './game/match'
+import { HelpDialog } from './components/HelpDialog'
+import { GameToast } from './components/GameToast'
+import { SettingsDialog } from './components/SettingsDialog'
+import { Confetti } from './components/Confetti'
+import { advanceRound } from './game/roundFlow'
+import { scheduleMatchReset } from './game/matchReset'
+import { computer, gameModes, gestures, movesForMode } from './game/rules'
 import { useCamera } from './vision/useCamera'
 import { registerGameTools } from './game/agentTools'
-import './App.css'
-function CameraIcon() { return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true"><rect x="3" y="6" width="13" height="12" rx="3"/><path d="m16 10 5-3v10l-5-3"/></svg> }
+function CameraIcon({ className = 'size-6' }: { className?: string }) {
+  return (
+    <svg
+      className={className}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      aria-hidden="true"
+    >
+      <rect x="3" y="6" width="13" height="12" rx="3" />
+      <path d="m16 10 5-3v10l-5-3" />
+    </svg>
+  )
+}
 function App() {
+  const controlsRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    const controls = controlsRef.current
+    if (!controls) return
+    const update = () =>
+      document.documentElement.style.setProperty(
+        '--controls-height',
+        `${controls.getBoundingClientRect().height}px`,
+      )
+    update()
+    const observer = new ResizeObserver(update)
+    observer.observe(controls)
+    return () => {
+      observer.disconnect()
+      document.documentElement.style.removeProperty('--controls-height')
+    }
+  }, [])
   useEffect(registerGameTools, [])
-  const state = useSelector(gameStore, s => s.context)
+  useEffect(initializeAppearance, [])
+  const state = useSelector(gameStore, (s) => s.context)
   const { videoRef, start, stop } = useCamera()
   const { camera, phase, local, opponent, outcome, gesture, stable } = state
-  const finished = Math.max(local.score, opponent.score) >= 5
-  const active = camera === 'ready'
+  const finished = isMatchFinished(state)
+  const matchResult = matchOutcome(state)
+  useGameAudio(state)
   useEffect(() => {
-    if (phase !== 'countdown') return
-    if (state.countdown === 0) { gameStore.trigger.capture({ now: performance.now() }); return }
+    return scheduleMatchReset(gameStore, stop)
+  }, [finished, state.rulesOpen, state.settingsDraft, stop])
+  const matchLabel =
+    state.format === 'firstTo'
+      ? `First to ${state.limit}`
+      : `${state.limit} round${state.limit === 1 ? '' : 's'}`
+  const active = camera === 'ready'
+  const availableMoves = movesForMode(state.mode)
+  const allowedGesture = gesture !== null && availableMoves.includes(gesture)
+  useEffect(() => {
+    if (!state.running || !active || finished) return
+    if (advanceRound(gameStore, performance.now())) return
     const timer = window.setTimeout(() => gameStore.trigger.tick(), 1000)
     return () => clearTimeout(timer)
-  }, [phase, state.countdown])
-  const title = finished ? local.score >= 5 ? 'The universe is yours.' : 'A worthy opponent.' : phase === 'result' ? outcome === 'win' ? 'You take this round.' : outcome === 'loss' ? 'The computer takes it.' : 'A meeting of minds.' : phase === 'countdown' ? 'Make your move.' : 'Your hands. Five possibilities.'
+  }, [phase, state.countdown, state.nextIn, state.running, state.mode, active, finished])
+  const roundNumber = phase === 'result' ? state.round - 1 : state.round
+  const canResume = phase === 'result' || state.round > 1
+  const primaryLabel = finished
+    ? 'Play again'
+    : camera === 'loading'
+      ? 'Connecting…'
+      : state.running
+        ? 'Pause'
+        : camera === 'error'
+          ? 'Retry'
+          : canResume
+            ? 'Resume'
+            : 'Start match'
+
   function primary() {
-    if (finished) { gameStore.trigger.reset(); return }
-    if (!active) { void start(); return }
-    gameStore.trigger.start({ opponentMove: computer.chooseMove() })
+    unlockAudio()
+    if (finished) gameStore.trigger.reset()
+    if (!active) {
+      void start(true)
+    } else if (state.running) {
+      gameStore.trigger.pause()
+    } else {
+      gameStore.trigger.start({ opponentMove: computer.chooseMove(state.mode) })
+    }
   }
-  return <div className="app-shell">
-    <header className="topbar">
-      <a className="brand" href="/" aria-label="Fivefold home"><span className="brand-mark">✳</span> fivefold<span className="brand-period">.</span></a>
-      <span className="mode"><span className="status-dot"/> VS COMPUTER</span>
-      <button className="text-button rules-button" onClick={() => gameStore.trigger.toggleRules()} aria-expanded={state.rulesOpen} aria-controls="rules">How to play <span className="help-mark">?</span></button>
-    </header>
-    <main>
-      <section className="intro">
-        <div className="eyebrow">ROCK · PAPER · SCISSORS · LIZARD · SPOCK</div>
-        <h1>{title}</h1>
-        <p>{finished ? 'First to five. Play again for a fresh start.' : phase === 'result' ? state.explanation : 'A familiar game. Two extra twists. Play with your webcam.'}</p>
-      </section>
-      <section className="game" aria-label="Game arena">
-        <div className="match-strip"><span><span className="small-dot"/> {finished ? 'MATCH COMPLETE' : `ROUND ${String(phase === 'result' ? state.round - 1 : state.round).padStart(2, '0')}`}</span><span>FIRST TO <strong>5</strong></span><button className="reset-button" onClick={() => gameStore.trigger.reset()} disabled={phase === 'countdown'}>↻ <span>Reset</span></button></div>
-        <div className="arena">
-          <article className={`player-panel local-panel ${phase === 'result' && outcome === 'win' ? 'winner' : ''}`}>
-            <div className="panel-header"><div className="player-name"><span className="player-avatar">Y</span><div><h2>You</h2><span>{active ? 'Camera connected' : camera === 'loading' ? 'Connecting camera' : 'Your side of the arena'}</span></div></div><span className={`connection ${active ? 'connected' : ''}`}><span className="status-dot"/>{active ? 'LIVE' : 'LOCAL'}</span></div>
-            <div className={`video-stage ${active ? 'live' : ''}`}>
-              <video ref={videoRef} autoPlay playsInline muted className={camera === 'ready' || camera === 'loading' ? 'visible' : ''}/>
-              <div className="viewfinder"><i/><i/><i/><i/></div>
-              {!active && <div className="camera-placeholder"><span className="camera-icon"><CameraIcon/></span><h3>{camera === 'loading' ? 'Getting things ready…' : camera === 'error' ? 'Let’s reconnect.' : 'Step into the arena.'}</h3><p>{camera === 'loading' ? 'Allow camera access. Hand tracking will load next.' : camera === 'error' ? state.error : 'Enable your camera and let your hand do the talking.'}</p><span className="privacy-note">Video stays on your device</span></div>}
-              {active && <span className={`gesture-chip ${stable ? 'recognized' : ''}`}>{gesture ? `${gestures[gesture].icon} ${gesture} · ${stable ? 'Ready' : 'Hold steady'}` : 'Show one hand inside the frame'}</span>}
-              {phase === 'result' && local.move && <div className="move-reveal"><span>{gestures[local.move].icon}</span><strong>{local.move}</strong></div>}
-              {active && <button className="camera-stop" onClick={stop} aria-label="Turn off camera"><CameraIcon/></button>}
-            </div>
-            <div className="panel-footer"><span>{phase === 'result' ? 'YOUR MOVE' : 'READY WHEN YOU ARE'}</span><div className="score-dots" aria-label={`Your score: ${local.score} out of 5`}>{Array.from({length:5},(_,i)=><i key={i} className={i < local.score ? 'filled' : ''}/>)}</div><strong>{local.score}<small> / 5</small></strong></div>
-          </article>
-          <div className="versus" aria-hidden="true">vs</div>
-          <article className={`player-panel opponent-panel ${phase === 'result' && outcome === 'loss' ? 'winner' : ''}`}>
-            <div className="panel-header"><div className="player-name"><span className="player-avatar computer-avatar">✳</span><div><h2>Computer</h2><span>Your unpredictable counterpart</span></div></div><span className="connection"><span className="status-dot"/> READY</span></div>
-            <div className={`opponent-stage ${phase === 'countdown' ? 'thinking' : ''}`}>
-              <div className="orbit orbit-one"/><div className="orbit orbit-two"/><div className="orbit orbit-three"/>
-              {phase === 'result' && opponent.move ? <div className="opponent-reveal"><span>{gestures[opponent.move].icon}</span><h3>{opponent.move}</h3></div> : <><div className="opponent-symbol">✳</div><h3>{phase === 'countdown' ? 'Move locked in.' : 'Challenge accepted.'}</h3><p>{phase === 'countdown' ? 'Your turn to make a little magic.' : 'Five moves. Endless possibilities.'}</p></>}
-              <span className="opponent-caption">A LITTLE LUCK. A LITTLE LOGIC.</span>
-            </div>
-            <div className="panel-footer"><span>{phase === 'result' ? 'THEIR MOVE' : 'ALWAYS UP FOR A ROUND'}</span><div className="score-dots" aria-label={`Computer score: ${opponent.score} out of 5`}>{Array.from({length:5},(_,i)=><i key={i} className={i < opponent.score ? 'filled' : ''}/>)}</div><strong>{opponent.score}<small> / 5</small></strong></div>
-          </article>
+  return (
+    <div className="mx-auto flex min-h-svh max-w-5xl flex-col px-5 arena:px-10 pt-[env(safe-area-inset-top,0px)] max-arena:pr-[max(16px,env(safe-area-inset-right,0px))] max-arena:pl-[max(16px,env(safe-area-inset-left,0px))] max-arena:pb-[calc(148px+env(safe-area-inset-bottom,0px))]">
+      <GameToast />
+      <SettingsDialog />
+      <HelpDialog />
+      {finished && matchResult === 'win' && <Confetti />}
+      <header className="flex min-h-20 items-center justify-between gap-4 arena:min-h-24">
+        <h1 className="whitespace-nowrap font-display text-xl font-bold tracking-tight arena:text-2xl">
+          show of hands<span className="text-accent">.</span>
+        </h1>
+        <div className="flex items-center gap-3 arena:gap-6">
+          <Button
+            variant="text"
+            onClick={() => gameStore.trigger.toggleRules()}
+            aria-haspopup="dialog"
+            aria-controls="rules"
+          >
+            How to play
+          </Button>
+          <AppearanceControl compact />
         </div>
-        <div className="round-controls">
-          <div className="round-message" role="status" aria-live="polite">{phase === 'countdown' ? <><span className="countdown">{state.countdown || 'Go!'}</span><span>Hold your gesture through the countdown</span></> : <><span className="instruction-number">{active ? '02' : '01'}</span><span>{state.explanation && phase === 'idle' ? state.explanation : active ? 'Choose your gesture. Start a round. Hold it steady.' : 'Camera on. Game face on.'}</span></>}</div>
-          <button className="primary-button" onClick={primary} disabled={camera === 'loading' || phase === 'countdown'}>{!active && !finished && <CameraIcon/>}{finished ? 'Play again' : camera === 'loading' ? 'Connecting…' : phase === 'countdown' ? 'Get ready…' : !active ? camera === 'error' ? 'Retry camera' : 'Enable camera' : phase === 'result' ? 'Next round' : 'Start round'}<span>↗</span></button>
-        </div>
-      </section>
-      <section className="gesture-guide" aria-label="Gesture guide"><div className="guide-heading"><h2>A little hand language.</h2><span>ONE HAND. FIVE MOVES.</span></div><div className="gesture-list">{moves.map((move,i)=><div className={`gesture-card ${active && gesture === move ? 'selected' : ''}`} key={move}><span className="gesture-icon" aria-hidden="true">{gestures[move].icon}</span><div><h3>{move}<span>0{i+1}</span></h3><p>{gestures[move].hint}</p></div></div>)}</div><p className="guide-note">Face your hand toward the camera in good light. For lizard, turn slightly sideways to show the mouth shape.</p></section>
-      {state.rulesOpen && <section className="rules" id="rules"><div><h2>Every move beats two.</h2><p>Hold a clear gesture until the countdown ends. The first to five wins takes the match; draws don’t add points.</p><p>The computer chooses before your move is captured. A missed gesture simply retries the round.</p></div><ul>{moves.map(move => <li key={move}><span aria-hidden="true">{gestures[move].icon}</span><span>{Object.values(wins[move]).join('. ')}.</span></li>)}</ul></section>}
-    </main>
-    <footer><span>FIVE MOVES. FAIR GAME.</span><span><span className="small-dot"/> On-device hand tracking · Powered by MediaPipe</span></footer>
-  </div>
+      </header>
+      <main className="flex flex-1 items-start py-6 arena:items-center arena:py-12">
+        <section className="w-full" aria-label="Game arena">
+          <div className="mb-4 grid grid-cols-[2.75rem_minmax(0,1fr)_2.75rem] items-center gap-2">
+            <div
+              className="col-start-2 flex flex-wrap items-center justify-center gap-x-2 gap-y-1 text-center text-sm text-muted"
+              aria-label="Current game"
+            >
+              <span className="font-medium text-ink">{gameModes[state.mode].name}</span>
+              <span aria-hidden="true">·</span>
+              <span>
+                {finished
+                  ? 'Match complete'
+                  : `Round ${roundNumber}${state.format === 'rounds' ? ` / ${state.limit}` : ''}`}
+              </span>
+              <small className="basis-full text-xs text-muted">{matchLabel}</small>
+            </div>
+            <button
+              className="col-start-3 grid size-11 place-items-center rounded-xl bg-transparent text-muted hover:bg-soft hover:text-ink"
+              aria-haspopup="dialog"
+              aria-label={state.running ? 'Pause and open game settings' : 'Open game settings'}
+              title="Game settings"
+              onClick={() => gameStore.trigger.openSettings()}
+            >
+              <svg
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.5"
+                strokeLinecap="round"
+                aria-hidden="true"
+                className="size-5"
+              >
+                <path d="M4 7h5m4 0h7M4 17h9m4 0h3" />
+                <circle cx="11" cy="7" r="2" />
+                <circle cx="15" cy="17" r="2" />
+              </svg>
+            </button>
+          </div>
+          <div className="grid grid-cols-1 gap-3 arena:grid-cols-2 arena:gap-5">
+            <article
+              data-winner={phase === 'result' && outcome === 'win'}
+              className="group/player overflow-hidden rounded-2xl border border-line bg-surface data-[winner=true]:border-accent/50 data-[winner=true]:animate-[winner-pulse_700ms_ease-out]"
+            >
+              <div className="flex h-14 items-center justify-between gap-3 px-4 arena:h-16 arena:px-5">
+                <h2 className="flex items-center gap-2 text-sm font-medium">
+                  You
+                  {active && (
+                    <span className="size-1.5 rounded-full bg-accent" aria-label="Camera on" />
+                  )}
+                </h2>
+                <strong
+                  className="font-display text-2xl font-semibold tabular-nums group-data-[winner=true]/player:text-accent group-data-[winner=true]/player:animate-[score-pop_450ms_ease-out]"
+                  aria-label={`Your score: ${local.score}`}
+                >
+                  {local.score}
+                </strong>
+              </div>
+              <div className="relative m-1.5 mt-0 overflow-hidden rounded-xl bg-soft grid place-items-center h-[clamp(260px,47svh,470px)] arena:h-80">
+                <video
+                  ref={videoRef}
+                  autoPlay
+                  playsInline
+                  muted
+                  className={
+                    'absolute inset-0 size-full object-contain -scale-x-100 ' +
+                    (camera === 'ready' || camera === 'loading' ? 'opacity-100' : 'opacity-0')
+                  }
+                />
+                {!active && (
+                  <div className="relative flex max-w-80 flex-col items-center gap-3 p-6 text-center">
+                    <CameraIcon className="size-7 text-muted" />
+                    <h3 className="text-sm font-medium text-muted">
+                      {camera === 'loading'
+                        ? 'Connecting…'
+                        : camera === 'error'
+                          ? 'Camera unavailable'
+                          : 'Your camera'}
+                    </h3>
+                    <p className="max-w-64 text-sm leading-relaxed text-muted">
+                      {camera === 'loading'
+                        ? 'Allow camera access to continue.'
+                        : camera === 'error'
+                          ? state.error
+                          : 'Start the match to turn it on.'}
+                    </p>
+                  </div>
+                )}
+                {phase === 'result' && local.move && (
+                  <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center bg-black/35 text-center text-white [text-shadow:0_2px_12px_#0008]">
+                    <span className="text-6xl">{gestures[local.move].icon}</span>
+                    <h3 className="mt-3 text-base font-medium capitalize">{local.move}</h3>
+                  </div>
+                )}
+                {active && phase !== 'result' && (
+                  <div
+                    className={
+                      'pointer-events-none absolute bottom-3 left-3 z-10 flex max-w-[calc(100%-5rem)] items-center gap-3 rounded-xl bg-zinc-950/85 text-sm text-white ' +
+                      (phase === 'countdown' ? 'px-4 py-3' : 'px-3 py-2.5')
+                    }
+                  >
+                    {phase === 'countdown' ? (
+                      <>
+                        <strong
+                          className="min-w-8 text-center font-display text-4xl leading-none font-semibold tabular-nums text-blue-300"
+                          role="timer"
+                          aria-live="off"
+                          aria-label={`${state.countdown} seconds until capture`}
+                        >
+                          {state.countdown || 'Go!'}
+                        </strong>
+                        <span>
+                          <b className="block text-sm font-semibold">
+                            {stable && allowedGesture ? 'Hold your sign' : 'Show your sign'}
+                          </b>
+                          <small className="block mt-0.5 text-xs text-zinc-300 capitalize">
+                            {gesture && allowedGesture
+                              ? `${gesture} ${stable ? '✓' : '· hold steady'}`
+                              : 'Capture at zero'}
+                          </small>
+                        </span>
+                      </>
+                    ) : (
+                      <span>
+                        {state.running
+                          ? 'Next round shortly'
+                          : gesture && allowedGesture
+                            ? `${gestures[gesture].icon} ${gesture}${stable ? ' ✓' : ''}`
+                            : 'Show one hand'}
+                      </span>
+                    )}
+                  </div>
+                )}
+                {active && (
+                  <button
+                    className="absolute right-2 bottom-2 z-10 grid size-11 place-items-center rounded-full bg-zinc-950/70 text-white hover:bg-zinc-950"
+                    onClick={stop}
+                    aria-label="Turn off camera"
+                  >
+                    <CameraIcon className="size-4" />
+                  </button>
+                )}
+              </div>
+            </article>
+            <article
+              data-winner={phase === 'result' && outcome === 'loss'}
+              className="group/player overflow-hidden rounded-2xl border border-line bg-surface max-arena:grid max-arena:min-h-16 max-arena:grid-cols-[1fr_auto] max-arena:items-center max-arena:gap-0 max-arena:px-4 data-[winner=true]:border-accent/50 data-[winner=true]:animate-[winner-pulse_700ms_ease-out]"
+            >
+              <div className="flex h-14 items-center justify-between gap-3 px-4 arena:h-16 arena:px-5 max-arena:h-auto max-arena:justify-start max-arena:gap-3 max-arena:px-0 max-arena:py-3">
+                <h2 className="flex items-center gap-2 text-sm font-medium">Computer</h2>
+                <strong
+                  className="font-display text-2xl font-semibold tabular-nums group-data-[winner=true]/player:text-accent group-data-[winner=true]/player:animate-[score-pop_450ms_ease-out]"
+                  aria-label={`Computer score: ${opponent.score}`}
+                >
+                  {opponent.score}
+                </strong>
+              </div>
+              <div className="relative m-1.5 mt-0 overflow-hidden rounded-xl bg-soft arena:h-80 flex flex-col items-center justify-center max-arena:m-0 max-arena:min-h-0 max-arena:overflow-visible max-arena:bg-transparent max-arena:py-2">
+                {phase === 'result' && opponent.move ? (
+                  <div className="relative text-center max-arena:flex max-arena:items-center max-arena:gap-2">
+                    <span className="text-6xl max-arena:text-2xl">
+                      {gestures[opponent.move].icon}
+                    </span>
+                    <h3 className="mt-3 text-base font-medium capitalize max-arena:m-0 max-arena:text-sm">
+                      {opponent.move}
+                    </h3>
+                  </div>
+                ) : (
+                  <div className="flex flex-col items-center justify-center gap-3 text-muted max-arena:flex-row max-arena:gap-2">
+                    <span aria-hidden="true" className="text-4xl leading-none max-arena:hidden">
+                      {phase === 'countdown' ? '?' : '—'}
+                    </span>
+                    <h3 className="text-sm font-normal">
+                      {phase === 'countdown'
+                        ? 'Move locked'
+                        : state.running
+                          ? 'Next round shortly'
+                          : 'Ready'}
+                    </h3>
+                  </div>
+                )}
+              </div>
+            </article>
+          </div>
+          <div
+            ref={controlsRef}
+            className="flex flex-col items-center justify-center gap-3 arena:flex-row arena:gap-4 arena:pt-7 max-arena:fixed max-arena:inset-x-0 max-arena:bottom-0 max-arena:z-20 max-arena:border-t max-arena:border-line max-arena:bg-canvas/95 max-arena:px-5 max-arena:pt-3 max-arena:backdrop-blur-md max-arena:pb-[calc(14px+env(safe-area-inset-bottom,0px))]"
+          >
+            <div
+              className="flex w-full items-center justify-between gap-3 text-xs text-muted arena:hidden"
+              aria-label={`Score: you ${local.score}, computer ${opponent.score}`}
+            >
+              <span>
+                You{' '}
+                <strong className="ml-1 text-lg font-medium tabular-nums text-ink">
+                  {local.score}
+                </strong>
+              </span>
+              <span className="text-xs">{finished ? 'Final' : `Round ${roundNumber}`}</span>
+              <span>
+                Computer{' '}
+                <strong className="ml-1 text-lg font-medium tabular-nums text-ink">
+                  {opponent.score}
+                </strong>
+              </span>
+            </div>
+            <Button
+              variant="primary"
+              className="max-arena:w-full"
+              onClick={primary}
+              disabled={camera === 'loading'}
+            >
+              {primaryLabel}
+            </Button>
+            {!state.running && state.round > 1 && !finished && (
+              <Button
+                variant="secondary"
+                className="max-arena:min-h-8 max-arena:py-1"
+                onClick={() => gameStore.trigger.reset()}
+              >
+                Reset match
+              </Button>
+            )}
+          </div>
+        </section>
+      </main>
+      <footer className="flex flex-wrap items-center justify-between gap-3 py-6 text-xs text-muted">
+        <span>
+          By{' '}
+          <a
+            href="https://sasivarnan.com"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="underline decoration-line underline-offset-4 hover:text-ink hover:decoration-muted"
+          >
+            Sasivarnan R ↗
+          </a>
+        </span>
+        <span>Video stays on your device · MediaPipe</span>
+      </footer>
+    </div>
+  )
 }
 export default App

@@ -1,44 +1,75 @@
-# Fivefold
+# Show of Hands
 
-A webcam rock–paper–scissors–lizard–Spock game built with React, TypeScript, Vite, MediaPipe Tasks Vision, and `@xstate/store-react`.
+A webcam game with two variants: Classic (rock, paper, scissors) and Lizard & Spock. Built with React, TypeScript, Tailwind CSS 4, MediaPipe, and `@xstate/store-react`.
 
 ## Run
+
+Requires Node 22.18+ and pnpm.
 
 ```sh
 pnpm install
 pnpm dev
 ```
 
-Open the localhost URL, enable your camera, and hold one of the illustrated poses. Click **Start round**, keep your pose through the countdown, and play first to five. A draw adds no points; an unclear capture retries without scoring. The camera stops when the page becomes hidden or you turn it off.
+Click **Start match**, allow camera access, and hold your sign until the countdown reaches zero. Rounds continue automatically; **Pause** interrupts without scoring.
 
-Camera access requires localhost or HTTPS. Use a current Chrome or Edge browser with camera access, WebAssembly, OffscreenCanvas, and module workers. The official MediaPipe model and WASM runtime are included in `public/mediapipe`; webcam frames remain on the device. Google Fonts is the only external presentation request.
+The settings icon opens the game variant, match length (1–20 points or rounds), and countdown (3 or 5 seconds). Applying resets the score. Cancel keeps the match paused. How to play contains the gesture guide and rules.
 
-## Checks
+The final result stays visible for six seconds, then the camera turns off and scores and moves clear. Game settings stay selected. Play again skips the wait; opening a dialog pauses the reset.
+
+Sound effects are on by default. Toggle Sounds in Game settings; the choice saves locally. Tones mark the countdown and results. A saved off preference stays muted. Actual speaker output has not been verified.
+
+A round win earns one point. Draws earn none. In fixed-round matches, draws count as rounds, missed signs retry, and equal final scores produce a draw.
+
+## GitHub Pages
+
+In your GitHub repository, open **Settings → Pages → Build and deployment** and select **GitHub Actions** as the source. Push to `main` to publish. The **Deploy to GitHub Pages** workflow also supports manual runs from the Actions tab.
+
+Each push to `main` installs the locked dependencies, checks formatting, runs lint and tests, builds, and deploys `dist`. The workflow reads the Pages base path automatically, supporting repository URLs and custom domains. Camera access works over the HTTPS Pages URL.
+
+To check a repository-path build locally:
 
 ```sh
-pnpm test
-pnpm lint
-pnpm build
+PAGES_BASE_PATH=/rock-paper-scissors-lizard-spock/ pnpm build
+PAGES_BASE_PATH=/rock-paper-scissors-lizard-spock/ pnpm preview
 ```
 
-Node 22.18+ is recommended for the built-in TypeScript test runner. Tests cover all 25 outcomes, scoring and match completion, early/invalid/stale captures, reset and camera interruption, and gesture stabilization. No recorded real-hand fixture dataset is bundled; recognition thresholds still require real-webcam validation across hands and lighting.
+Local development keeps `/` as its base path. MediaPipe assets follow the selected base path. No deployment secret is needed; the workflow uses GitHub's built-in token.
 
-## Structure
+## Development
 
-- `src/game/rules.ts`: pure round resolution and independent computer opponent.
-- `src/game/store.ts`: typed event-driven camera/game state and participant records.
-- `src/vision/classifier.ts`: geometric pose classification and 450 ms stability filter.
-- `src/vision/hand.worker.ts`: MediaPipe inference off the UI thread.
-- `src/vision/useCamera.ts`: camera, bounded frame transfer, and lifecycle cleanup.
-- `src/App.tsx`: responsive two-player arena.
+```sh
+pnpm test # Vitest, one run
+pnpm test:watch
+pnpm lint
+pnpm build
+pnpm format:check
+pnpm format
+```
 
-The opponent move is chosen before capture. Video and workers stay outside the store. Multiplayer is not implemented; future work can replace the computer move source and render a remote stream in the existing opponent panel. A real P2P mode also needs its own signaling, round synchronization, and fair move exchange protocol.
+- `src/game/`: state, rules, match flow, notifications, appearance, audio.
+- `src/vision/`: camera lifecycle, MediaPipe worker, gesture classification.
+- `src/components/`: controls, dialogs, feedback.
+- `src/hooks/`: shared React lifecycle hooks.
+- `src/index.css`: theme tokens, global browser defaults, and animation keyframes. Component styling uses Tailwind classes directly in JSX, with shared Button, Dialog, and Toggle components.
+- `tests/`: game behavior and synthetic gesture regression tests.
 
-## Recognition
+Tests use Vitest assertions, fake timers, and global stubs. Oxlint handles linting and Oxfmt handles formatting; Prettier has been removed.
 
-Rock is a closed fist; paper is an open palm with fingers together; scissors extends index and middle fingers; Spock splits the middle and ring fingers; lizard curves all four fingers toward an open thumb like a puppet mouth. Show lizard at a slight side angle. Ambiguous poses are intentionally not accepted. These are deterministic geometric heuristics over MediaPipe's world landmarks, not a custom trained five-class model.
+## Camera and recognition
 
-The optional `document.modelContext` integration exposes visible game status and starting a round in supporting browsers. Its browser contract has not been validated in a supported WebMCP context.
+Camera access needs localhost or HTTPS, WebAssembly, OffscreenCanvas, and module workers. Model and runtime assets are bundled in `public/mediapipe`. Frames stay on the device; backgrounding stops the camera.
 
-MediaPipe model source: https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task
-Runtime assets: `@mediapipe/tasks-vision` 1.0.1, Apache-2.0.
+Classification checks whole-finger straightness and preserves finger order to reject curled tips and crossed fingers. This reduces sensitivity to an isolated noisy joint. All gestures share the same open-finger check. Scissors requires an open index and middle finger plus a folded ring and pinky, so relaxed Paper cannot pass as Scissors. It uses joint angles and palm-relative distances, with a stability filter requiring at least four matching frames, 80% agreement over the last 900 ms, and a 450 ms hold. An uncertain or conflicting current frame cannot score; a single misclassified frame does not erase the entire hold. Either hand is supported geometrically. Paper accepts slightly cupped hands, relaxed pinkies, and closed or spread fingers, with the thumb open or tucked; Spock requires paired fingers with a central split. Show lizard slightly sideways. Real-camera accuracy across hands, lighting, and mobile browsers remains unverified; the fixtures are synthetic, including articulated three-bone fingers for all five signs and tests for every gesture transition, covering palm/back rotations, both hands, size changes, and small landmark noise.
+
+Mobile sessions process frames up to 480 pixels wide every 120 ms; desktop uses 640 pixels and 80 ms, with only one inference in flight.
+
+## Appearance and integrations
+
+The appearance switch follows the system until overridden, then saves the choice locally. The existing `hand-to-hand-appearance` storage key is retained so returning players keep their preference.
+
+The optional WebMCP integration exposes visible game status and starting a match; its browser contract remains unverified. Multiplayer is not implemented; the computer's independent move source leaves room for a future remote opponent.
+
+MediaPipe runtime: `@mediapipe/tasks-vision`, Apache-2.0. [Official hand model](https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task).
+
+By [Sasivarnan R](https://sasivarnan.com).

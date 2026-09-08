@@ -1,12 +1,35 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" class="bg-canvas font-sans text-ink antialiased">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="theme-color" content="#f8f9f5" />
-    <meta name="description" content="Play rock, paper, scissors, lizard, Spock with your webcam. Five moves, first to five. Hand tracking stays on your device." />
-    <title>Fivefold — Your hands. Five possibilities.</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="theme-color" content="#fafafa" />
+    <meta
+      name="description"
+      content="Play classic rock, paper and scissors or add lizard and Spock. Automatic webcam rounds with your choice of match length. Hand tracking stays on your device."
+    />
+    <title>Show of Hands — Rock, Paper, Scissors & More</title>
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <script>
+      ;(() => {
+        let preference = 'system'
+        try {
+          const saved = localStorage.getItem('hand-to-hand-appearance')
+          if (['system', 'light', 'dark'].includes(saved)) preference = saved
+        } catch {}
+        const theme =
+          preference === 'system'
+            ? matchMedia('(prefers-color-scheme: dark)').matches
+              ? 'dark'
+              : 'light'
+            : preference
+        document.documentElement.dataset.theme = theme
+        document.documentElement.style.colorScheme = theme
+      })()
+    </script>
   </head>
-  <body><div id="root"></div><script type="module" src="/src/main.tsx"></script></body>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
 </html>

@@ -9,8 +9,11 @@ self.onmessage = async (event: MessageEvent) => {
       const vision = await FilesetResolver.forVisionTasks(data.wasmUrl, true)
       detector = await HandLandmarker.createFromOptions(vision, {
         baseOptions: { modelAssetPath: data.modelUrl, delegate: 'CPU' },
-        runningMode: 'VIDEO', numHands: 1,
-        minHandDetectionConfidence: .65, minHandPresenceConfidence: .65, minTrackingConfidence: .65,
+        runningMode: 'VIDEO',
+        numHands: 1,
+        minHandDetectionConfidence: 0.65,
+        minHandPresenceConfidence: 0.65,
+        minTrackingConfidence: 0.65,
       })
       self.postMessage({ type: 'ready' })
     } else if (data.type === 'frame' && detector) {
@@ -19,6 +22,11 @@ self.onmessage = async (event: MessageEvent) => {
       self.postMessage({ type: 'result', at: data.at, ...stabilizer.update(gesture, data.at) })
     }
   } catch (error) {
-    self.postMessage({ type: 'error', message: error instanceof Error ? error.message : 'Hand tracking failed' })
-  } finally { data.frame?.close() }
+    self.postMessage({
+      type: 'error',
+      message: error instanceof Error ? error.message : 'Hand tracking failed',
+    })
+  } finally {
+    data.frame?.close()
+  }
 }
