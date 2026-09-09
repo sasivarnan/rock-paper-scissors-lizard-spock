@@ -10,7 +10,7 @@ export interface GameContext {
   notificationId: number
   startWhenReady: boolean
   settingsDraft: SettingsDraft | null
-  countdownSeconds: 1 | 3 | 5
+  countdownSeconds: GameSettings['countdownSeconds']
   format: MatchFormat
   limit: number
   mode: GameMode

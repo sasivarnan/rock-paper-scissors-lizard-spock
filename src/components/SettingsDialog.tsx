@@ -115,27 +115,39 @@ export function SettingsDialog() {
               ? `First player to ${draft.limit} point${draft.limit === 1 ? '' : 's'} wins. Draws award no points.`
               : `Most points after ${draft.limit} round${draft.limit === 1 ? '' : 's'} wins. Draws count as rounds; missed gestures retry.`}
           </p>
-          <label className="flex min-w-0 flex-col gap-2 text-sm font-medium mt-5">
-            Time to make your move
-            <select
-              value={draft.countdownSeconds}
-              onChange={(event) =>
-                updateDraft({
-                  countdownSeconds: Number(event.target.value) as SettingsDraft['countdownSeconds'],
-                })
-              }
-              className="min-h-11 w-full rounded-lg border border-line bg-surface px-3 py-2 text-base font-normal text-ink"
-            >
-              <option value="1">1 second · Fast play</option>
-              <option value="3">3 seconds · Standard</option>
-              <option value="5">5 seconds · More time to get ready</option>
-            </select>
-            <span className="text-xs font-normal text-muted">
-              {draft.countdownSeconds === 1
-                ? 'Have your sign ready before the countdown. Missed signs retry.'
-                : 'Try five seconds when your phone is propped up.'}
-            </span>
-          </label>
+          <fieldset className="mt-5 border-0 p-0">
+            <legend className="mb-3 text-sm font-medium">Time to make your move</legend>
+            <div className="grid grid-cols-3 gap-2">
+              {(
+                [
+                  [1, 'Fast'],
+                  [3, 'Standard'],
+                  [5, 'Relaxed'],
+                ] as const
+              ).map(([seconds, label]) => (
+                <label
+                  key={seconds}
+                  data-selected={draft.countdownSeconds === seconds}
+                  className="flex cursor-pointer flex-col items-center gap-2 rounded-xl border border-line p-3 text-center hover:bg-soft data-[selected=true]:border-accent/50 data-[selected=true]:bg-accent-soft"
+                >
+                  <input
+                    type="radio"
+                    name="move-timer"
+                    value={seconds}
+                    checked={draft.countdownSeconds === seconds}
+                    onChange={() => updateDraft({ countdownSeconds: seconds })}
+                    className="size-4 shrink-0 accent-accent"
+                  />
+                  <span>
+                    <strong className="block text-sm font-medium">
+                      {seconds} second{seconds === 1 ? '' : 's'}
+                    </strong>
+                    <span className="text-xs text-muted">{label}</span>
+                  </span>
+                </label>
+              ))}
+            </div>
+          </fieldset>
           <p className="leading-relaxed text-muted mt-5 rounded-xl bg-soft p-3 text-xs">
             Apply saves these settings and starts a fresh match. Cancel keeps your match paused.
           </p>

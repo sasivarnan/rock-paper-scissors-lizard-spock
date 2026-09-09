@@ -73,7 +73,8 @@ test.each([
   'null',
   '[]',
   '{}',
-  JSON.stringify({ ...choice, countdownSeconds: 2 }),
+  JSON.stringify({ ...choice, countdownSeconds: 4 }),
+  JSON.stringify({ ...choice, countdownSeconds: 2, limit: 0 }),
   JSON.stringify({ ...choice, limit: 0 }),
   JSON.stringify({ ...choice, limit: 21 }),
   JSON.stringify({ ...choice, limit: 1.5 }),
@@ -109,4 +110,10 @@ test('unavailable storage does not block applying settings', () => {
   } finally {
     cleanup()
   }
+})
+
+test('saved two-second pace becomes one second while preserving other settings', () => {
+  storage(JSON.stringify({ ...choice, countdownSeconds: 2 }))
+  expect(readGameSettings()).toEqual(choice)
+  expect(makeGameStore(readGameSettings()).getSnapshot().context.countdown).toBe(1)
 })

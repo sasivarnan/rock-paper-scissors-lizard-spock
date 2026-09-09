@@ -604,6 +604,7 @@ test('one-second rounds capture after one tick and retain the pace for later rou
   store.trigger.detected({ gesture: 'rock', stable: true, at: 950 })
   store.trigger.capture({ now: 1000 })
   expect(store.getSnapshot().context.local.score).toBe(0)
+  expect(advanceRound(store, 1000)).toBe(false)
   store.trigger.tick()
   advanceRound(store, 1000)
   expect(store.getSnapshot().context.local.score).toBe(1)

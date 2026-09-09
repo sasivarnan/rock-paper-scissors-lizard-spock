@@ -8,7 +8,14 @@ export function readGameSettings(): GameSettings {
   try {
     const mode = localStorage.getItem('show-of-hands-game-mode')
     if (mode === 'rps' || mode === 'rpsls') fallback.mode = mode
-    const saved: unknown = JSON.parse(localStorage.getItem(settingsKey) ?? 'null')
+    let saved: unknown = JSON.parse(localStorage.getItem(settingsKey) ?? 'null')
+    if (
+      saved &&
+      typeof saved === 'object' &&
+      'countdownSeconds' in saved &&
+      saved.countdownSeconds === 2
+    )
+      saved = { ...saved, countdownSeconds: 1 }
     if (validSettings(saved)) return settingsFrom(saved)
   } catch {
     // Fall back to defaults if storage is unavailable or malformed.
