@@ -1,6 +1,7 @@
 import { Button } from './components/Button'
 import { AppearanceControl } from './components/AppearanceControl'
 import { initializeAppearance } from './game/appearance'
+import { persistGameSettings } from './game/preferences'
 import { useGameAudio } from './hooks/useGameAudio'
 import { unlockAudio } from './game/audio'
 import { useEffect, useRef } from 'react'
@@ -51,6 +52,7 @@ function App() {
   }, [])
   useEffect(registerGameTools, [])
   useEffect(initializeAppearance, [])
+  useEffect(() => persistGameSettings(gameStore), [])
   const state = useSelector(gameStore, (s) => s.context)
   const { videoRef, start, stop } = useCamera()
   const { camera, phase, local, opponent, outcome, gesture, stable } = state

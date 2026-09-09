@@ -120,19 +120,24 @@ export function SettingsDialog() {
             <select
               value={draft.countdownSeconds}
               onChange={(event) =>
-                updateDraft({ countdownSeconds: Number(event.target.value) as 3 | 5 })
+                updateDraft({
+                  countdownSeconds: Number(event.target.value) as SettingsDraft['countdownSeconds'],
+                })
               }
               className="min-h-11 w-full rounded-lg border border-line bg-surface px-3 py-2 text-base font-normal text-ink"
             >
-              <option value="3">3 seconds · Quick play</option>
+              <option value="1">1 second · Fast play</option>
+              <option value="3">3 seconds · Standard</option>
               <option value="5">5 seconds · More time to get ready</option>
             </select>
             <span className="text-xs font-normal text-muted">
-              Try five seconds when your phone is propped up.
+              {draft.countdownSeconds === 1
+                ? 'Have your sign ready before the countdown. Missed signs retry.'
+                : 'Try five seconds when your phone is propped up.'}
             </span>
           </label>
           <p className="leading-relaxed text-muted mt-5 rounded-xl bg-soft p-3 text-xs">
-            Apply starts a fresh match and resets scores. Cancel keeps your match paused.
+            Apply saves these settings and starts a fresh match. Cancel keeps your match paused.
           </p>
           <div className="mt-6 flex items-center justify-end gap-3 max-arena:flex-col-reverse max-arena:items-stretch">
             <Button type="button" variant="secondary" onClick={cancel}>

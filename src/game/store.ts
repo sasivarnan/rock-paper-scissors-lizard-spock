@@ -1,19 +1,16 @@
 import { createStore } from '@xstate/store-react'
+import { readGameSettings } from './preferences.ts'
 import { resolveRound, movesForMode, type GameMode, type Move, type Outcome } from './rules.ts'
 import { isMatchFinished, type MatchFormat } from './match.ts'
 import { resultNotification, type GameNotification } from './notifications.ts'
-export interface SettingsDraft {
-  countdownSeconds: 3 | 5
-  mode: GameMode
-  format: MatchFormat
-  limit: number
-}
+import { defaultSettings, settingsFrom, validSettings, type GameSettings } from './settings.ts'
+export type SettingsDraft = GameSettings
 export interface GameContext {
   notification: GameNotification | null
   notificationId: number
   startWhenReady: boolean
   settingsDraft: SettingsDraft | null
-  countdownSeconds: 3 | 5
+  countdownSeconds: 1 | 3 | 5
   format: MatchFormat
   limit: number
   mode: GameMode
@@ -38,10 +35,7 @@ const initial: GameContext = {
   notificationId: 0,
   startWhenReady: false,
   settingsDraft: null,
-  countdownSeconds: 3,
-  format: 'firstTo',
-  limit: 5,
-  mode: 'rpsls',
+  ...defaultSettings,
   running: false,
   nextIn: 3,
   camera: 'off',
@@ -58,22 +52,6 @@ const initial: GameContext = {
   round: 1,
   rulesOpen: false,
 }
-function settingsFrom(context: GameContext): SettingsDraft {
-  const { mode, format, limit, countdownSeconds } = context
-  return { mode, format, limit, countdownSeconds }
-}
-
-function validSettings(settings: SettingsDraft) {
-  return (
-    [3, 5].includes(settings.countdownSeconds) &&
-    ['rps', 'rpsls'].includes(settings.mode) &&
-    ['firstTo', 'rounds'].includes(settings.format) &&
-    Number.isInteger(settings.limit) &&
-    settings.limit >= 1 &&
-    settings.limit <= 20
-  )
-}
-
 function pauseMatch(context: GameContext): GameContext {
   const interrupted = context.phase === 'countdown'
   return {
@@ -98,9 +76,10 @@ function resetMatch(context: GameContext, settings = settingsFrom(context)): Gam
   }
 }
 
-export function makeGameStore() {
+export function makeGameStore(settings: GameSettings = defaultSettings) {
+  const context: GameContext = { ...initial, ...settings, countdown: settings.countdownSeconds }
   return createStore({
-    context: initial,
+    context,
     on: {
       openSettings: (c) =>
         c.settingsDraft ? c : { ...pauseMatch(c), settingsDraft: settingsFrom(c) },
@@ -231,4 +210,4 @@ export function makeGameStore() {
     },
   })
 }
-export const gameStore = makeGameStore()
+export const gameStore = makeGameStore(readGameSettings())
