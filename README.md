@@ -15,7 +15,7 @@ Click **Start match**, allow camera access, and hold your sign until the countdo
 
 The settings icon opens the game variant, match length (1–20 points or rounds), and countdown (3 or 5 seconds). Applying resets the score. Cancel keeps the match paused. How to play contains the gesture guide and rules.
 
-The final result stays visible for six seconds, then the camera turns off and scores and moves clear. Game settings stay selected. Play again skips the wait; opening a dialog pauses the reset.
+When a match ends, the camera turns off immediately. The final score and moves stay visible until you choose Play again or apply new match settings. Play again resets scores and reconnects the camera.
 
 Sound effects are on by default. Toggle Sounds in Game settings; the choice saves locally. Tones mark the countdown and results. A saved off preference stays muted. Actual speaker output has not been verified.
 

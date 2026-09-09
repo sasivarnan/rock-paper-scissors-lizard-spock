@@ -1,8 +1,9 @@
+import { completeCameraStartup } from '../src/game/cameraFlow.ts'
 import { test, expect, vi, afterEach } from 'vitest'
 import { moves, resolveRound } from '../src/game/rules.ts'
 import { makeGameStore, type SettingsDraft } from '../src/game/store.ts'
 import { GestureStabilizer } from '../src/vision/classifier.ts'
-import { scheduleMatchReset } from '../src/game/matchReset.ts'
+import { completeMatch } from '../src/game/matchCompletion.ts'
 import { audioStore, isAudioMode } from '../src/game/audio.ts'
 
 afterEach(() => {
@@ -530,68 +531,57 @@ test('drawn match and missed sign receive distinct notifications', () => {
   expect(store.getSnapshot().context.notification?.persistent).toBe(true)
 })
 
-test('completed matches reset after six seconds, preserving game settings', () => {
-  vi.useFakeTimers()
-  for (const move of ['rock', 'paper', 'scissors'] as const) {
+test.each(['rock', 'paper', 'scissors'] as const)(
+  'completed match with %s turns off the camera and retains the final result',
+  (move) => {
+    vi.useFakeTimers()
     const store = makeGameStore()
     configure(store, { mode: 'rps', format: 'rounds', limit: 1 })
     store.trigger.cameraReady()
     round(store, move, 'scissors')
-    let stopped = false
-    scheduleMatchReset(store, () => {
-      stopped = true
-      store.trigger.cameraOff()
-    })
-    vi.advanceTimersByTime(5999)
-    expect(store.getSnapshot().context.phase).toBe('result')
-    expect(stopped).toBe(false)
-    vi.advanceTimersByTime(1)
+    const final = store.getSnapshot().context
+    const stop = vi.fn(() => store.trigger.cameraOff())
+    completeMatch(store, stop)
+    expect(stop).toHaveBeenCalledOnce()
+    completeMatch(store, stop)
+    expect(stop).toHaveBeenCalledOnce()
+    vi.advanceTimersByTime(60000)
     const c = store.getSnapshot().context
-    expect(stopped).toBe(true)
     expect(c.camera).toBe('off')
-    expect(c.phase).toBe('idle')
-    expect(c.round).toBe(1)
-    expect(c.local.score).toBe(0)
-    expect(c.opponent.score).toBe(0)
-    expect(c.local.move).toBe(null)
-    expect(c.opponent.move).toBe(null)
-    expect(c.gesture).toBe(null)
-    expect(c.notification).toBe(null)
+    expect(c.phase).toBe('result')
+    expect(c.local).toEqual(final.local)
+    expect(c.opponent).toEqual(final.opponent)
+    expect(c.notification).toEqual(final.notification)
+    expect(c.notification?.persistent).toBe(true)
     expect(c.running).toBe(false)
-    expect(c.mode).toBe('rps')
-    expect(c.format).toBe('rounds')
-    expect(c.limit).toBe(1)
-  }
-})
+    store.trigger.openSettings()
+    store.trigger.cancelSettings()
+    expect(store.getSnapshot().context.local).toEqual(final.local)
+    store.trigger.reset()
+    const reset = store.getSnapshot().context
+    expect(reset.round).toBe(1)
+    expect(reset.local.score).toBe(0)
+    expect(reset.opponent.score).toBe(0)
+    expect(reset.local.move).toBeNull()
+    expect(reset.notification).toBeNull()
+    expect(reset.mode).toBe('rps')
+    expect(reset.limit).toBe(1)
+    store.trigger.cameraLoading({ startMatch: true })
+    completeCameraStartup(store)
+    completeMatch(store, stop)
+    expect(store.getSnapshot().context.phase).toBe('countdown')
+    expect(stop).toHaveBeenCalledOnce()
+  },
+)
 
-test('pending reset respects dialogs and does not interrupt a replay', () => {
-  vi.useFakeTimers()
+test('an unfinished match keeps its camera running', () => {
   const store = makeGameStore()
-  configure(store, { limit: 1 })
   store.trigger.cameraReady()
   round(store, 'rock', 'scissors')
-  let stops = 0
-  const cancel = scheduleMatchReset(store, () => {
-    stops++
-  })
-  cancel?.()
-  vi.advanceTimersByTime(6000)
-  expect(stops).toBe(0)
-  store.trigger.openSettings()
-  expect(
-    scheduleMatchReset(store, () => {
-      stops++
-    }),
-  ).toBe(undefined)
-  store.trigger.cancelSettings()
-  scheduleMatchReset(store, () => {
-    stops++
-  })
-  store.trigger.reset()
-  store.trigger.start({ opponentMove: 'paper' })
-  vi.advanceTimersByTime(6000)
-  expect(stops).toBe(0)
-  expect(store.getSnapshot().context.phase).toBe('countdown')
+  const stop = vi.fn()
+  completeMatch(store, stop)
+  expect(stop).not.toHaveBeenCalled()
+  expect(store.getSnapshot().context.running).toBe(true)
 })
 
 test('audio defaults to sounds and accepts only supported preference names', () => {

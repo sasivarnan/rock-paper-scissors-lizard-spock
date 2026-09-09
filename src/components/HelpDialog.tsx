@@ -63,7 +63,8 @@ export function HelpDialog() {
           </span>
           <p className="text-sm leading-relaxed text-muted">
             <strong className="font-medium text-ink">Play on.</strong> Rounds follow automatically.
-            After the final result, the camera turns off and scores reset.
+            When the match ends, the camera turns off. Your final score stays until you choose Play
+            again.
           </p>
         </li>
       </ol>

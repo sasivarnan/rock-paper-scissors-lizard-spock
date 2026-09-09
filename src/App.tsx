@@ -12,7 +12,7 @@ import { GameToast } from './components/GameToast'
 import { SettingsDialog } from './components/SettingsDialog'
 import { Confetti } from './components/Confetti'
 import { advanceRound } from './game/roundFlow'
-import { scheduleMatchReset } from './game/matchReset'
+import { completeMatch } from './game/matchCompletion'
 import { computer, gameModes, gestures, movesForMode } from './game/rules'
 import { useCamera } from './vision/useCamera'
 import { registerGameTools } from './game/agentTools'
@@ -58,8 +58,8 @@ function App() {
   const matchResult = matchOutcome(state)
   useGameAudio(state)
   useEffect(() => {
-    return scheduleMatchReset(gameStore, stop)
-  }, [finished, state.rulesOpen, state.settingsDraft, stop])
+    completeMatch(gameStore, stop)
+  }, [finished, camera, stop])
   const matchLabel =
     state.format === 'firstTo'
       ? `First to ${state.limit}`
@@ -188,7 +188,7 @@ function App() {
                     (camera === 'ready' || camera === 'loading' ? 'opacity-100' : 'opacity-0')
                   }
                 />
-                {!active && (
+                {!active && phase !== 'result' && (
                   <div className="relative flex max-w-80 flex-col items-center gap-3 p-6 text-center">
                     <CameraIcon className="size-7 text-muted" />
                     <h3 className="text-sm font-medium text-muted">
@@ -208,7 +208,9 @@ function App() {
                   </div>
                 )}
                 {phase === 'result' && local.move && (
-                  <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center bg-black/35 text-center text-white [text-shadow:0_2px_12px_#0008]">
+                  <div
+                    className={`pointer-events-none absolute inset-0 flex flex-col items-center justify-center text-center ${active ? 'bg-black/35 text-white [text-shadow:0_2px_12px_#0008]' : 'bg-soft text-ink'}`}
+                  >
                     <span className="text-6xl">{gestures[local.move].icon}</span>
                     <h3 className="mt-3 text-base font-medium capitalize">{local.move}</h3>
                   </div>

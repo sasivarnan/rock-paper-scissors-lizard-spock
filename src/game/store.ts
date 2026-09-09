@@ -219,7 +219,6 @@ export function makeGameStore() {
           notification: resultNotification(next, c.notificationId + 1),
         }
       },
-      returnToStart: (c) => ({ ...initial, ...settingsFrom(c) }),
       reset: (c) => ({
         ...resetMatch(c),
         gesture: c.gesture,
